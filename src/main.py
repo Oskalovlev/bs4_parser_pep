@@ -115,9 +115,7 @@ def pep(session):
     pep_status_count = defaultdict(int)
     total_pep_count = 0
     for tr_tag in tqdm(tr_tags):
-        td_tags = find_tag(
-            tr_tag, 'td'
-        ).find_next_sibling('td')
+        td_tags = find_tag(tr_tag, 'td').find_next_sibling('td')
         total_pep_count += 1
 
         for pep_link in td_tags:
@@ -132,28 +130,25 @@ def pep(session):
             dd_tag = find_tag(
                 dl_tag, 'dt', attrs={'class': 'field-even'}
             ).find_next_sibling('dd')
-            status_teg = dd_tag.string
-            status_pep = find_tag(
-                tr_tag, 'td').string[1:]
+            status_in_card = dd_tag.string
+            status_pep = find_tag(tr_tag, 'td').string[1:]
             try:
-                if status_teg not in (EXPECTED_STATUS[status_pep]):
+                if status_in_card not in (EXPECTED_STATUS[status_pep]):
                     if len(status_pep) > 2 or (
                         EXPECTED_STATUS[status_pep] is None
                     ):
                         raise KeyError('Получен неожиданный статус')
                     logging.info(
                         f'Несовпадающие статусы:\n {pep_url}\n'
-                        f'Cтатус на странице: {status_teg}\n'
+                        f'Статус в карточке: {status_in_card}\n'
                         f'Ожидаемые статусы: {EXPECTED_STATUS[status_pep]}'
                     )
-
             except KeyError:
                 logging.warning('Получен некорректный статус')
-
             else:
                 pep_status_count[
-                    status_teg] = pep_status_count.get(
-                    status_teg, 0) + 1
+                    status_in_card] = pep_status_count.get(
+                    status_in_card, 0) + 1
 
     results.extend(pep_status_count.items())
     results.append(('Total: ', total_pep_count))
