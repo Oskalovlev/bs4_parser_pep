@@ -3,6 +3,7 @@ import logging
 from collections import defaultdict
 from urllib.parse import urljoin
 
+from requests import RequestException
 import requests_cache
 from bs4 import BeautifulSoup
 from tqdm import tqdm
@@ -10,24 +11,15 @@ from tqdm import tqdm
 from constants import BASE_DIR, MAIN_DOC_URL, PEP_URL, EXPECTED_STATUS
 from configs import configure_argument_parser, configure_logging
 from outputs import control_output
-from utils import get_response, find_tag
-
-
-def cooking_soup(session, url):
-    response = get_response(session, url)
-    if response is None:
-        return
-    return BeautifulSoup(response.text, features='lxml')
+from utils import get_response, find_tag, cooking_soup
 
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
     soup = cooking_soup(session, whats_new_url)
 
-    main_div = find_tag(soup, 'section', attrs={'id': 'what-s-new-in-python'})
-    div_with_ul = find_tag(main_div, 'div', attrs={'class': 'toctree-wrapper'})
-    sections_by_python = div_with_ul.find_all(
-        'li', attrs={'class': 'toctree-l1'}
+    sections_by_python = soup.select(
+        '#what-s-new-in-python div.toctree-wrapper li.toctree-l1'
     )
 
     result = [('Ссылка на статью', 'Заголовок', 'Редактор, Автор')]
@@ -35,7 +27,13 @@ def whats_new(session):
         version_a_tag = section.find('a')
         href = version_a_tag['href']
         version_link = urljoin(whats_new_url, href)
-        response = get_response(session, version_link)
+        try:
+            response = get_response(session, version_link)
+        except RequestException:
+            logging.exception(
+                f'Возникла ошибка при загрузке страницы {whats_new_url}',
+                stack_info=True
+            )
         if response is None:
             continue
 
@@ -107,9 +105,7 @@ def download(session):
 def pep(session):
     soup = cooking_soup(session, PEP_URL)
 
-    section_tag = find_tag(soup, 'section', attrs={'id': 'numerical-index'})
-    tbody_tag = find_tag(section_tag, 'tbody')
-    tr_tags = tbody_tag.find_all('tr')
+    tr_tags = soup.select('#numerical-index tbody tr')
 
     results = [('Cтатус', 'Количество')]
     pep_status_count = defaultdict(int)

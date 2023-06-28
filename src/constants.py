@@ -5,8 +5,8 @@ MAIN_DOC_URL = 'https://docs.python.org/3/'
 PEP_URL = 'https://peps.python.org/'
 
 DATETIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
-LOG_FORMAT = '"%(asctime)s - [%(levelname)s] - %(message)s"'
 DT_FORMAT = '%d.%m.%Y %H:%M:%S'
+LOG_FORMAT = '"%(asctime)s - [%(levelname)s] - %(message)s"'
 
 EXPECTED_STATUS = {
     'A': ('Active', 'Accepted'),
@@ -18,3 +18,9 @@ EXPECTED_STATUS = {
     'W': ('Withdrawn',),
     '': ('Draft', 'Active'),
 }
+
+LOGS = 'logs'
+PARSER_LOG = 'parser.log'
+PRETTY = 'pretty'
+FILE = 'file'
+RESULTS = 'results'
