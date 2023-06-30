@@ -1,5 +1,3 @@
-import logging
-
 from bs4 import BeautifulSoup
 
 from exceptions import ParserFindTagException
@@ -15,7 +13,6 @@ def find_tag(soup, tag, attrs=None, **kwargs):
     searched_tag = soup.find(tag, attrs=(attrs or {}), **kwargs)
     if searched_tag is None:
         error_msg = f'Не найден тег {tag} {attrs}'
-        logging.error(error_msg, stack_info=True)
         raise ParserFindTagException(error_msg)
     return searched_tag
 
@@ -24,4 +21,5 @@ def cooking_soup(session, url, features='lxml'):
     response = get_response(session, url)
     if response is None:
         return
+
     return BeautifulSoup(response.text, features)

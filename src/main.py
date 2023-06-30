@@ -5,13 +5,14 @@ from urllib.parse import urljoin
 
 from requests import RequestException
 import requests_cache
-from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-from constants import BASE_DIR, MAIN_DOC_URL, PEP_URL, EXPECTED_STATUS
+from constants import (BASE_DIR, MAIN_DOC_URL, PEP_URL,
+                       EXPECTED_STATUS, DOWNLOADS)
 from configs import configure_argument_parser, configure_logging
 from outputs import control_output
-from utils import get_response, find_tag, cooking_soup
+from utils import find_tag, cooking_soup
+from exceptions import NotFoundException, ParserFindTagException
 
 
 def whats_new(session):
@@ -27,39 +28,42 @@ def whats_new(session):
         version_a_tag = section.find('a')
         href = version_a_tag['href']
         version_link = urljoin(whats_new_url, href)
+
         try:
-            response = get_response(session, version_link)
+            soup = cooking_soup(session, version_link)
         except RequestException:
             logging.exception(
                 f'Возникла ошибка при загрузке страницы {whats_new_url}',
                 stack_info=True
             )
-        if response is None:
-            continue
 
-        soup = BeautifulSoup(response.text, 'lxml')
-
-        h1 = find_tag(soup, 'h1')
-        dl = find_tag(soup, 'dl')
-        dl_text = dl.text.replace('\n', ' ')
-        result.append(
-            (version_link, h1.text, dl_text)
-        )
-
+        try:
+            h1, dl = (find_tag(soup, 'h1').text,
+                      find_tag(soup, 'dl').text.replace('\n', ' '))
+        except ParserFindTagException:
+            error_msg = 'Не найден тег'
+            logging.error(error_msg, stack_info=True)
+        result.append((version_link, h1, dl))
     return result
 
 
 def latest_versions(session):
     soup = cooking_soup(session, MAIN_DOC_URL)
 
-    sidebar = find_tag(soup, 'div', attrs={'class': 'sphinxsidebarwrapper'})
+    try:
+        sidebar = find_tag(
+            soup, 'div', attrs={'class': 'sphinxsidebarwrapper'}
+        )
+    except ParserFindTagException:
+        error_msg = 'Не найден тег'
+        logging.error(error_msg, stack_info=True)
     ul_tags = sidebar.find_all('ul')
     for ul in ul_tags:
         if 'All versions' in ul.text:
             a_tags = ul.find_all('a')
             break
     else:
-        raise Exception('Ничего не нашлось')
+        raise NotFoundException('Ничего не нашлось')
 
     results = [('Ссылка на документацию', 'Версия', 'Статус')]
     pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'
@@ -81,16 +85,14 @@ def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
     soup = cooking_soup(session, downloads_url)
 
-    main_tag = find_tag(soup, 'div', {'role': 'main'})
-    table_tag = find_tag(main_tag, 'table', {'class': 'docutils'})
-    pdf_a4_tag = find_tag(
-        table_tag, 'a', {'href': re.compile(r'.+pdf-a4\.zip$')}
-    )
-    pdf_a4_link = pdf_a4_tag['href']
+    pdf_a4_link = soup.select_one(
+        'table.docutils a[href$="pdf-a4.zip"]'
+    )['href']
     archive_url = urljoin(downloads_url, pdf_a4_link)
+
     filename = archive_url.split('/')[-1]
 
-    downloads_dir = BASE_DIR / 'downloads'
+    downloads_dir = BASE_DIR / DOWNLOADS
     downloads_dir.mkdir(exist_ok=True)
     archive_path = downloads_dir / filename
 
@@ -107,47 +109,60 @@ def pep(session):
 
     tr_tags = soup.select('#numerical-index tbody tr')
 
-    results = [('Cтатус', 'Количество')]
-    pep_status_count = defaultdict(int)
     total_pep_count = 0
+    status_pep_count = defaultdict(int)
+    results = [('Status', 'Quantity')]
+
     for tr_tag in tqdm(tr_tags):
-        td_tags = find_tag(tr_tag, 'td').find_next_sibling('td')
-        total_pep_count += 1
+
+        try:
+            td_tags = find_tag(tr_tag, 'td').find_next_sibling('td')
+        except ParserFindTagException:
+            error_msg = 'Не найден тег'
+            logging.error(error_msg, stack_info=True)
+
+        all_status = None
+        link = None
 
         for pep_link in td_tags:
             link = pep_link['href']
             pep_url = urljoin(PEP_URL, link)
-
             soup = cooking_soup(session, pep_url)
 
-            dl_tag = find_tag(
-                soup, 'dl', attrs={'class': 'rfc2822 field-list simple'}
-            )
-            dd_tag = find_tag(
-                dl_tag, 'dt', attrs={'class': 'field-even'}
-            ).find_next_sibling('dd')
-            status_in_card = dd_tag.string
-            status_pep = find_tag(tr_tag, 'td').string[1:]
             try:
-                if status_in_card not in (EXPECTED_STATUS[status_pep]):
-                    if len(status_pep) > 2 or (
-                        EXPECTED_STATUS[status_pep] is None
-                    ):
-                        raise KeyError('Получен неожиданный статус')
-                    logging.info(
-                        f'Несовпадающие статусы:\n {pep_url}\n'
-                        f'Статус в карточке: {status_in_card}\n'
-                        f'Ожидаемые статусы: {EXPECTED_STATUS[status_pep]}'
-                    )
-            except KeyError:
-                logging.warning('Получен некорректный статус')
-            else:
-                pep_status_count[
-                    status_in_card] = pep_status_count.get(
-                    status_in_card, 0) + 1
+                dl = find_tag(
+                    soup, 'dl', attrs={'class': 'rfc2822 field-list simple'}
+                )
+            except ParserFindTagException:
+                error_msg = 'Не найден тег'
+                logging.error(error_msg, stack_info=True)
 
-    results.extend(pep_status_count.items())
-    results.append(('Total: ', total_pep_count))
+            pattern = (
+                    r'.*(?P<status>Active|Draft|Final|Provisional|Rejected|'
+                    r'Superseded|Withdrawn|Deferred|April Fool!|Accepted)'
+                )
+            re_text = re.search(pattern, dl.text)
+            status = None
+            if re_text:
+                status = re_text.group('status')
+            if all_status and EXPECTED_STATUS.get(all_status) != status:
+                logging.info(
+                    f'Несовпадающие статусы:\n{pep_url}\n'
+                    f'Статус в карточке: {status}\n'
+                    f'Ожидаемый статус: {EXPECTED_STATUS[all_status]}'
+                )
+            if not all_status and status not in ('Active', 'Draft'):
+                logging.info(
+                    f'Несовпадающие статусы:\n{link}\n'
+                    f'Статус в карточке: {status}\n'
+                    f'Ожидаемые статусы: ["Active", "Draft"]'
+                )
+            total_pep_count += 1
+            status_pep_count[status] += 1
+    results.extend(
+        [(status, status_pep_count[status]) for status in status_pep_count]
+    )
+    results.append(('Total', total_pep_count))
     return results
 
 
