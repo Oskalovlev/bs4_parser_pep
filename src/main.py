@@ -31,13 +31,7 @@ def whats_new(session):
 
         try:
             soup = cooking_soup(session, version_link)
-        except RequestException:
-            logging.exception(
-                f'Возникла ошибка при загрузке страницы {whats_new_url}',
-                stack_info=True
-            )
 
-        try:
             h1, dl = (find_tag(soup, 'h1').text,
                       find_tag(soup, 'dl').text.replace('\n', ' '))
         except ParserFindTagException:
@@ -116,17 +110,19 @@ def pep(session):
     for tr_tag in tqdm(tr_tags):
 
         try:
-            td_tags = find_tag(tr_tag, 'td').find_next_sibling('td')
+            td_tags = tr_tag.td
         except ParserFindTagException:
             error_msg = 'Не найден тег'
             logging.error(error_msg, stack_info=True)
 
         all_status = None
-        link = None
+        pep_link = None
 
         for pep_link in td_tags:
-            link = pep_link['href']
-            pep_url = urljoin(PEP_URL, link)
+            pep_link = find_tag(
+                td_tags.find_next_sibling('td'), 'a'
+            ).get('href')
+            pep_url = urljoin(PEP_URL, pep_link)
             soup = cooking_soup(session, pep_url)
 
             try:
@@ -153,7 +149,7 @@ def pep(session):
                 )
             if not all_status and status not in ('Active', 'Draft'):
                 logging.info(
-                    f'Несовпадающие статусы:\n{link}\n'
+                    f'Несовпадающие статусы:\n{pep_link}\n'
                     f'Статус в карточке: {status}\n'
                     f'Ожидаемые статусы: ["Active", "Draft"]'
                 )
@@ -178,7 +174,14 @@ def main():
     configure_logging()
     logging.info('Парсер запущен!')
 
-    arg_parser = configure_argument_parser(MODE_TO_FUNCTION.keys())
+    try:
+        arg_parser = configure_argument_parser(MODE_TO_FUNCTION.keys())
+    except RequestException:
+        logging.exception(
+            'Возникла ошибка при загрузке страницы',
+            stack_info=True
+        )
+
     args = arg_parser.parse_args()
     logging.info(f'Аргументы командной строки: {args}')
 
