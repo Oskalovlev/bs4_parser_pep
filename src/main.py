@@ -29,14 +29,10 @@ def whats_new(session):
         href = version_a_tag['href']
         version_link = urljoin(whats_new_url, href)
 
-        try:
-            soup = cooking_soup(session, version_link)
+        soup = cooking_soup(session, version_link)
 
-            h1, dl = (find_tag(soup, 'h1').text,
-                      find_tag(soup, 'dl').text.replace('\n', ' '))
-        except ParserFindTagException:
-            error_msg = 'Не найден тег'
-            logging.error(error_msg, stack_info=True)
+        h1, dl = (find_tag(soup, 'h1').text,
+                  find_tag(soup, 'dl').text.replace('\n', ' '))
         result.append((version_link, h1, dl))
     return result
 
@@ -44,13 +40,10 @@ def whats_new(session):
 def latest_versions(session):
     soup = cooking_soup(session, MAIN_DOC_URL)
 
-    try:
-        sidebar = find_tag(
-            soup, 'div', attrs={'class': 'sphinxsidebarwrapper'}
-        )
-    except ParserFindTagException:
-        error_msg = 'Не найден тег'
-        logging.error(error_msg, stack_info=True)
+    sidebar = find_tag(
+        soup, 'div', attrs={'class': 'sphinxsidebarwrapper'}
+    )
+
     ul_tags = sidebar.find_all('ul')
     for ul in ul_tags:
         if 'All versions' in ul.text:
@@ -109,11 +102,7 @@ def pep(session):
 
     for tr_tag in tqdm(tr_tags):
 
-        try:
-            td_tags = tr_tag.td
-        except ParserFindTagException:
-            error_msg = 'Не найден тег'
-            logging.error(error_msg, stack_info=True)
+        td_tags = tr_tag.td
 
         all_status = None
         pep_link = None
@@ -125,13 +114,9 @@ def pep(session):
             pep_url = urljoin(PEP_URL, pep_link)
             soup = cooking_soup(session, pep_url)
 
-            try:
-                dl = find_tag(
-                    soup, 'dl', attrs={'class': 'rfc2822 field-list simple'}
-                )
-            except ParserFindTagException:
-                error_msg = 'Не найден тег'
-                logging.error(error_msg, stack_info=True)
+            dl = find_tag(
+                soup, 'dl', attrs={'class': 'rfc2822 field-list simple'}
+            )
 
             pattern = (
                     r'.*(?P<status>Active|Draft|Final|Provisional|Rejected|'
@@ -171,31 +156,31 @@ MODE_TO_FUNCTION = {
 
 
 def main():
-    configure_logging()
-    logging.info('Парсер запущен!')
-
     try:
+        configure_logging()
+        logging.info('Парсер запущен!')
+
         arg_parser = configure_argument_parser(MODE_TO_FUNCTION.keys())
-    except RequestException:
+        args = arg_parser.parse_args()
+        logging.info(f'Аргументы командной строки: {args}')
+
+        session = requests_cache.CachedSession()
+        if args.clear_cache:
+            session.cache.clear()
+
+        parser_mode = args.mode
+        results = MODE_TO_FUNCTION[parser_mode](session)
+
+        if results is not None:
+            control_output(results, args)
+
+        logging.info('Парсер завершил работу.')
+
+    except (RequestException, ParserFindTagException) as error:
         logging.exception(
-            'Возникла ошибка при загрузке страницы',
+            f'Возникла ошибка при загрузке страницы {error}',
             stack_info=True
         )
-
-    args = arg_parser.parse_args()
-    logging.info(f'Аргументы командной строки: {args}')
-
-    session = requests_cache.CachedSession()
-    if args.clear_cache:
-        session.cache.clear()
-
-    parser_mode = args.mode
-    results = MODE_TO_FUNCTION[parser_mode](session)
-
-    if results is not None:
-        control_output(results, args)
-
-    logging.info('Парсер завершил работу.')
 
 
 if __name__ == '__main__':
