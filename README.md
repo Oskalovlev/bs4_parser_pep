@@ -66,28 +66,28 @@ python main.py <parser_mode> <args>
 
 ## Режимы парсера:
 ### При запуске парсера необходимо выбрать один из режимов <parser_mode>:
-```
+```sh
 * whats-new
 Парсинг последних обновлений с сайта
 python main.py whats-new <args>
 
 * latest-versions
 # Парсинг последних версий документации
-```python main.py latest_versions <args>```
+python main.py latest_versions <args>
 
 * download
 # Загрузка и сохранение архива с документацией
-```python main.py download <args>```
+python main.py download <args>
 
 * pep
 # Парсинг статусов PEP
-```python main.py pep <args>```
+python main.py pep <args>
 ```
 
 
 ## Аргументы парсера:
 ### При запуске парсера можно указать дополнительные аргументы :
-```
+```sh
 * Вывести информацию о парсере:
 python main.py <parser_mode> -h
 python main.py <parser_mode> --help
